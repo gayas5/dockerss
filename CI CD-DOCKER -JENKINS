@@ -1,0 +1,570 @@
+# 🚀 CI/CD Pipeline: Jenkins + Tomcat + Nexus + SonarQube
+
+## 📋 Overview
+
+This guide provides a step-by-step process to configure a CI/CD pipeline that:
+
+- Clones a Java project from GitHub (`https://github.com/saddammohd941/VProfile-1.git`).
+- Builds the project using Maven.
+- Analyzes code quality with SonarQube.
+- Deploys artifacts to Nexus.
+- Deploys the WAR file to Tomcat.
+
+### Setup
+
+| Service   | Port | Details                              |
+|-----------|------|--------------------------------------|
+| Jenkins   | 9446 | Container: `jenkins/jenkins:jdk21`   |
+| Tomcat    | 9445 | Credentials: `admin/admin123`        |
+| SonarQube | 9447 | URL: `http://<ip>:9447`              |
+| Nexus     | 9448 | URL: `http://<ip>:9448`              |
+
+### Prerequisites
+
+- **Docker** installed, with containers running for Jenkins, Tomcat, Nexus, and SonarQube.
+- Containers on the same Docker network for connectivity.
+- GitHub repository: `https://github.com/saddammohd941/VProfile-1.git`.
+- Tomcat configured with manager roles (`manager-gui`, `manager-script`).
+- Nexus and SonarQube accessible with valid credentials/tokens.
+
+---
+
+## 🔹 1. Jenkins Initial Configuration
+
+### 1.1 Access Jenkins
+
+- Open: `http://<ip>:9446`
+- Log in with admin credentials.
+
+### 1.2 Install Plugins
+
+1. Navigate to **Manage Jenkins > Manage Plugins > Available**.
+2. Install:
+   - **Git**: For repository cloning.
+   - **Maven Integration**: For Maven builds.
+   - **Deploy to container**: For Tomcat WAR deployment.
+   - **SonarQube Scanner**: For code quality analysis.
+3. Restart Jenkins if prompted:
+
+   ```bash
+   docker restart <jenkins-container-id>
+   ```
+
+### 1.3 Configure Global Tools
+
+1. Go to **Manage Jenkins > Global Tool Configuration**.
+2. Configure:
+   - **JDK**:
+     - Name: `jdk-11`
+     - Install automatically: ✅
+     - Version: Oracle JDK 11 or OpenJDK 11
+   - **Maven**:
+     - Name: `maven-3`
+     - Install automatically: ✅
+     - Version: `3.9.6`
+   - **SonarQube Scanner**:
+     - Name: `MySonarQubeScanner`
+     - Install automatically: ✅
+     - Version: Latest
+
+### 1.4 Configure SonarQube Server
+
+1. Go to **Manage Jenkins > Configure System**.
+2. Under **SonarQube servers**:
+   - Add SonarQube:
+     - Name: `MySonarQube`
+     - Server URL: `http://<ip>:9447`
+     - Token: Generate in SonarQube (`My Account > Security > Generate Token`).
+3. Save.
+
+### 1.5 Configure Tomcat
+
+1. Go to **Manage Jenkins > Configure System**.
+2. Under **Deploy war/ear to a container**:
+   - Add Container: `Tomcat 8+`
+   - Name: `mytomcat`
+   - Credentials:
+     - Username: `admin`
+     - Password: `admin123`
+     - Add via **Add > Jenkins > Username with password**
+   - Tomcat URL: `http://<ip>:9445`
+3. Save.
+
+---
+
+## 🔹 2. Resolve Maven Issues
+
+If the build fails with `Cannot run program "mvn" ... No such file or directory`, Maven is missing in the Jenkins container (`jenkins/jenkins:jdk21`).
+
+### 2.1 Manual Installation
+
+1. Access the container:
+
+   ```bash
+   docker exec -u root -it <jenkins-container-id> bash
+   ```
+
+2. Install Maven:
+
+   ```bash
+   apt update
+   apt install maven -y
+   mvn -version
+   exit
+   ```
+
+3. Restart Jenkins:
+
+   ```bash
+   docker restart <jenkins-container-id>
+   ```
+
+### 2.2 Preferred: Jenkins Tool Configuration
+
+- Use `maven-3` from **Global Tool Configuration** (Section 1.3).
+- Jenkins downloads Maven automatically, avoiding manual container changes.
+
+### 2.3 Verify Maven
+
+- Confirm `mvn -version` shows Maven 3.9.6.
+- Ensure Jenkins job uses `maven-3`.
+
+---
+
+## 🔹 3. Nexus Configuration
+
+### 3.1 Maven `settings.xml`
+
+- Location: `/var/jenkins_home/.m2/settings.xml` (create if missing).
+- Content:
+
+  ```xml
+  <settings>
+    <servers>
+      <server>
+        <id>nexus</id>
+        <username>nexus_user</username>
+        <password>nexus_password</password>
+      </server>
+    </servers>
+  </settings>
+  ```
+
+### 3.2 Update `pom.xml`
+
+- Add to the project’s `pom.xml`:
+
+  ```xml
+  <distributionManagement>
+    <repository>
+      <id>nexus</id>
+      <name>Nexus Release Repository</name>
+      <url>http://<ip>:9448/repository/maven-releases/</url>
+    </repository>
+    <snapshotRepository>
+      <id>nexus</id>
+      <name>Nexus Snapshot Repository</name>
+      <url>http://<ip>:9448/repository/maven-snapshots/</url>
+    </snapshotRepository>
+  </distributionManagement>
+  ```
+
+### 3.3 Test Nexus Deployment
+
+- Run:
+
+  ```bash
+  mvn clean deploy
+  ```
+
+- Verify artifacts in Nexus UI: `http://<ip>:9448`.
+
+---
+
+## 🔹 4. SonarQube Configuration
+
+### 4.1 Generate SonarQube Token
+
+1. Log in to SonarQube: `http://<ip>:9447`
+2. Go to **My Account > Security > Generate Token**.
+3. Copy the token.
+
+### 4.2 Create `sonar-project.properties`
+
+- In the repository root (`VProfile-1`):
+
+  ```properties
+  sonar.projectKey=vprofile
+  sonar.projectName=VProfile
+  sonar.projectVersion=1.0
+  sonar.sources=src
+  sonar.java.binaries=target/classes
+  sonar.host.url=http://<ip>:9447
+  sonar.login=<YOUR_SONARQUBE_TOKEN>
+  ```
+
+### 4.3 (Optional) SonarQube in `pom.xml`
+
+- Add to `pom.xml`:
+
+  ```xml
+  <properties>
+    <sonar.host.url>http://<ip>:9447</sonar.host.url>
+    <sonar.login><YOUR_SONARQUBE_TOKEN></sonar.login>
+  </properties>
+  ```
+
+### 4.4 Test SonarQube Analysis
+
+- Run:
+
+  ```bash
+  sonar-scanner
+  ```
+
+  or
+
+  ```bash
+  mvn sonar:sonar -Dsonar.host.url=http://<ip>:9447 -Dsonar.login=<YOUR_SONARQUBE_TOKEN>
+  ```
+
+- Check results in SonarQube UI.
+
+---
+
+## 🔹 5. Jenkins Freestyle Job
+
+### 5.1 Create Job
+
+1. **New Item > Freestyle project**
+2. Name: `vprofile-deploy`
+
+### 5.2 Source Code Management
+
+- Select **Git**.
+- Repository URL: `https://github.com/saddammohd941/VProfile-1.git`
+
+### 5.3 Build Steps
+
+1. **Invoke top-level Maven targets**:
+   - Maven Version: `maven-3`
+   - Goals: `clean package`
+2. **Execute SonarQube Scanner**:
+   - Properties:
+
+     ```properties
+     sonar.projectKey=vprofile
+     sonar.sources=src
+     sonar.java.binaries=target/classes
+     sonar.host.url=http://<ip>:9447
+     sonar.login=<YOUR_SONARQUBE_TOKEN>
+     ```
+
+3. **Invoke top-level Maven targets** (Nexus):
+   - Maven Version: `maven-3`
+   - Goals: `deploy`
+
+### 5.4 Post-Build Action
+
+- **Deploy war/ear to a container**:
+  - WAR/EAR files: `target/*.war`
+  - Container: `mytomcat`
+
+### 5.5 Build
+
+- Click **Save**, then **Build Now**.
+- Expected output:
+
+  ```plaintext
+  [vprofile-deploy] $ /var/jenkins_home/tools/hudson.tasks.Maven_MavenInstallation/maven-3/bin/mvn clean package
+  ...
+  [INFO] BUILD SUCCESS
+  ```
+
+---
+
+## 🔹 6. Jenkins Pipeline (Optional)
+
+### 6.1 Create `Jenkinsfile`
+
+```groovy
+pipeline {
+  agent any
+  tools {
+    maven 'maven-3'
+    jdk 'jdk-11'
+  }
+  stages {
+    stage-chkout {
+      steps {
+        git 'https://github.com/saddammohd941/VProfile-1.git'
+      }
+    }
+    stage-build {
+      steps {
+        sh 'mvn clean package'
+      }
+    }
+    stage-sonar {
+      steps {
+        withSonarQubeEnv('MySonarQube') {
+          sh 'mvn sonar:sonar'
+        }
+      }
+    }
+    stage-nexus {
+      steps {
+        sh 'mvn deploy'
+      }
+    }
+    stage-tomcat {
+      steps {
+        deploy adapters: [tomcat8(credentialsId: 'tomcat-credentials-id', url: 'http://<ip>:9445')], war: '**/*.war'
+      }
+    }
+  }
+}
+```
+
+### 6.2 Create Pipeline Job
+
+1. **New Item > Pipeline**
+2. Name: `vprofile-pipeline`
+3. SCM: Git
+   - URL: `https://github.com/saddammohd941/VProfile-1.git`
+   - Script Path: `Jenkinsfile`
+4. Save and build.
+
+---
+
+## 🔹 7. Validate Deployment
+
+1. **Application**: `http://<ip>:9445/VProfile-1`
+2. **Tomcat Manager**: `http://<ip>:9445/manager/html` (login: `admin/admin123`)
+3. **SonarQube**: `http://<ip>:9447` (check analysis)
+4. **Nexus**: `http://<ip>:9448` (verify artifacts)
+
+---
+
+## 🔹 8. Troubleshooting
+
+### 8.1 Maven Not Found
+
+- **Error**: `Cannot run program "mvn" ... No such file or directory`
+- **Fix**:
+  - Install Maven (Section 2.1).
+  - Or use `maven-3` in Jenkins job (Section 1.3).
+
+### 8.2 Permission Denied
+
+- **Error**: `E: Could not open lock file /var/lib/dpkg/lock-frontend`
+- **Fix**:
+
+  ```bash
+  docker exec -u root -it <jenkins-container-id> bash
+  apt update
+  apt install maven -y
+  ```
+
+### 8.3 Incorrect Build Step
+
+- **Error**: `/tmp/jenkins...sh: clean: not found`
+- **Fix**: Use **Invoke top-level Maven targets**, not **Execute shell**.
+
+### 8.4 Tomcat Deployment Failure
+
+- **Error**: 401/403 Unauthorized/Forbidden
+- **Fix**:
+  - Verify `tomcat-users.xml`:
+
+    ```xml
+    <tomcat-users>
+      <role rolename="manager-gui"/>
+      <role rolename="manager-script"/>
+      <role rolename="manager-jmx"/>
+      <role rolename="manager-status"/>
+      <role rolename="admin-gui"/>
+      <user username="admin" password="admin" roles="manager-gui, manager-script, manager-jmx, manager-status"/>
+      <user username="deployer" password="deployer123" roles="m<user username="hostadmin" password="admin123" roles="admin-gui"/>anager-script"/>
+      <user username="tomcat" password="s3cret" roles="manager-gui"/>
+    </tomcat-users>
+    ```
+
+  - Confirm credentials in Jenkins.
+
+### 8.5 SonarQube Connection Issues
+
+- **Error**: Connection refused or timeout
+- **Fix**:
+  - Verify URL: `http://<ip>:9447`
+  - Check Docker network:
+
+    ```bash
+    docker network ls
+    docker network inspect <network>
+    ```
+
+---
+
+## 🔹 9. Useful Commands
+
+```bash
+# List containers
+docker ps -a
+
+# Install Maven
+docker exec -u root -it <jenkins-container-id> bash
+apt update
+apt install maven -y
+mvn -version
+exit
+
+# Restart Jenkins
+docker restart <jenkins-container-id>
+
+# Test Nexus
+mvn clean deploy
+
+# Test SonarQube
+sonar-scanner
+```
+
+---
+
+## 🔹 10. Additional Configurations
+
+### 10.1 Custom Jenkins Dockerfile
+
+```dockerfile
+FROM jenkins/jenkins:jdk21
+USER root
+RUN apt-get update && apt-get install -y maven
+USER jenkins
+```
+
+Build and run:
+
+```bash
+docker build -t my-jenkins:jdk21-maven .
+docker run -d -p 9446:8080 --name my_jenkins my-jenkins:jdk21-maven
+```
+
+### 10.2 `docker-compose.yml`
+
+```yaml
+version: '3.8'
+services:
+  jenkins:
+    image: jenkins/jenkins:jdk21
+    ports:
+      - "9446:8080"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+    networks:
+      - ci-cd-net
+  tomcat:
+    image: tomcat:8.5
+    ports:
+      - "9445:8080"
+    volumes:
+      - ./tomcat-users.xml:/usr/local/tomcat/conf/tomcat-users.xml
+    networks:
+      - ci-cd-net
+  sonarqube:
+    image: sonarqube:community
+    ports:
+      - "9447:9000"
+    networks:
+      - ci-cd-net
+  nexus:
+    image: sonatype/nexus3
+    ports:
+      - "9448:8081"
+    networks:
+      - ci-cd-net
+networks:
+  ci-cd-net:
+    driver: bridge
+volumes:
+  jenkins_home:
+```
+
+### 10.3 Sample `tomcat-users.xml`
+
+```xml
+<tomcat-users>
+  <role rolename="manager-gui"/>
+  <role rolename="manager-script"/>
+  <user username="admin" password="admin123" roles="manager-gui,manager-script"/>
+</tomcat-users>
+```
+
+---
+
+## 🔹 11. Summary
+
+- **Jenkins**: Configured with Git, Maven, SonarQube, and Deploy plugins.
+- **Nexus**: Artifacts uploaded via `mvn deploy`.
+- **SonarQube**: Code analysis with `sonar-scanner` or `mvn sonar:sonar`.
+- **Tomcat**: WAR deployed post-build.
+- **Validation**: Check `http://<ip>:9445/VProfile-1`, Nexus, and SonarQube.
+
+---
+
+## 🔹 12. Additional Resources
+
+- **Nexus**:
+  - Default credentials: `admin` (retrieve password from Nexus container logs).
+  - Configure `maven-releases` and `maven-snapshots` repositories.
+- **SonarQube**:
+  - Add `sonar.tests=test` for test coverage.
+  - Set up quality gates for CI checks.
+- **Jenkins Security**:
+  - Enable CSRF and authentication: **Manage Jenkins > Configure Global Security**.
+- **Docker Network**:
+
+  ```bash
+  docker network create ci-cd-net
+  docker network connect ci-cd-net <jenkins-container-id>
+  docker network connect ci-cd-net <tomcat-container-id>
+  docker network connect ci-cd-net <sonarqube-container-id>
+  docker network connect ci-cd-net <nexus-container-id>
+  ```
+
+---
+
+## 🔹 13. Full Workflow
+
+1. Clone repository.
+2. Build WAR (`mvn clean package`).
+3. Run SonarQube analysis (`mvn sonar:sonar`).
+4. Deploy to Nexus (`mvn deploy`).
+5. Deploy WAR to Tomcat (`target/*.war`).
+6. Validate deployment and analysis.
+
+---
+
+## 🔹 14. Artifact Summary
+
+The following artifacts are included in the document:
+
+1. **settings.xml**: Maven configuration for Nexus credentials.
+2. **pom.xml**: Nexus and SonarQube configurations.
+3. **sonar-project.properties**: SonarQube analysis settings.
+4. **Jenkinsfile**: Pipeline script for Jenkins.
+5. **commands.sh**: Useful shell commands.
+6. **Dockerfile**: Custom Jenkins image with Maven.
+7. **docker-compose.yml**: Docker setup for all services.
+8. **tomcat-users.xml**: Tomcat user configuration.
+
+---
+
+## 🔹 15. Notes
+
+- Replace `<ip>` with your server’s IP address or hostname.
+- Replace `<jenkins-container-id>` with the actual container ID (`docker ps -a`).
+- Replace `<YOUR_SONARQUBE_TOKEN>` with the generated SonarQube token.
+- Ensure all containers are on the same Docker network for connectivity.
+- Monitor Jenkins build logs for detailed error messages.
+
+---
