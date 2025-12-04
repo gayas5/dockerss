@@ -1,0 +1,202 @@
+Here is a clean, clear, easy explanation for each of the Docker topics you listed.
+I’ll write them in simple beginner style + example commands.
+
+
+---
+
+1) Docker Exec
+
+Used to run a command inside a running container.
+
+Usage
+
+docker exec -it <container_name> <command>
+
+Examples
+
+docker exec -it myapp bash     # open terminal inside container
+docker exec -it myapp sh       # for Alpine/BusyBox
+docker exec -it myapp ls /app  # list files
+
+
+---
+
+2) Docker Volumes
+
+Volumes store data outside the container so data does not get deleted.
+
+Create a volume
+
+docker volume create mydata
+
+Use a volume
+
+docker run -v mydata:/var/lib/mysql mysql
+
+List volumes
+
+docker volume ls
+
+
+---
+
+3) Docker Stats
+
+Real-time resource usage of containers.
+
+Command
+
+docker stats
+
+Shows:
+
+CPU
+
+RAM
+
+Network
+
+Disk I/O
+
+
+
+---
+
+4) Docker Build
+
+Used to build an image from a Dockerfile.
+
+Command
+
+docker build -t myimage:latest .
+
+
+---
+
+5) Docker Multistage Dockerfile
+
+Used to create small, efficient images by using multiple FROM stages.
+
+Example
+
+# Stage 1 - build
+FROM golang:1.19 AS builder
+WORKDIR /app
+COPY . .
+RUN go build -o app .
+
+# Stage 2 - final image
+FROM alpine:latest
+COPY --from=builder /app/app /app/app
+CMD ["/app/app"]
+
+Benefits:
+
+Smaller size
+
+Faster deployment
+
+Cleaner layers
+
+
+
+---
+
+6) Push Docker Image to Docker Registry
+
+Login
+
+docker login
+
+Tag image
+
+docker tag myapp myusername/myapp:latest
+
+Push image
+
+docker push myusername/myapp:latest
+
+
+---
+
+7) Docker Scan
+
+Scan image for vulnerabilities.
+
+Command
+
+docker scan myimage
+
+
+---
+
+8) Push Image to AWS ECR
+
+1. Login to ECR
+
+aws ecr get-login-password --region ap-south-1 \
+| docker login --username AWS --password-stdin <account_id>.dkr.ecr.ap-south-1.amazonaws.com
+
+2. Tag Image
+
+docker tag myapp:latest <account_id>.dkr.ecr.ap-south-1.amazonaws.com/myapp:latest
+
+3. Push Image
+
+docker push <account_id>.dkr.ecr.ap-south-1.amazonaws.com/myapp:latest
+
+
+---
+
+9) Docker Save & Docker Load
+
+Used for export/import images.
+
+Save image to .tar file
+
+docker save -o myapp.tar myapp:latest
+
+Load image
+
+docker load -i myapp.tar
+
+
+---
+
+10) Docker Networks
+
+Used for container communication.
+
+Types:
+
+bridge (default)
+
+host
+
+none
+
+overlay (for Swarm)
+
+
+Create network
+
+docker network create mynetwork
+
+Run container in network
+
+docker run -d --network=mynetwork myapp
+
+List networks
+
+docker network ls
+
+
+---
+
+If you want, I can create:
+
+✅ A single PDF with all Docker commands
+✅ A voice-over style explanation
+✅ A full Docker beginner-to-advanced notes
+
+Just tell me “Make PDF” or “Make voice-over script”.
